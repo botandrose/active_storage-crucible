@@ -109,6 +109,34 @@ RSpec.describe "ActiveStorage::Crucible" do
     end
   end
 
+  describe "configure" do
+    it "yields self for block-style configuration" do
+      ActiveStorage::Crucible.configure do |config|
+        expect(config).to eq(ActiveStorage::Crucible)
+      end
+    end
+  end
+
+  describe "output_content_type" do
+    subject(:transformer) { ActiveStorage::Crucible::Transformer.new }
+
+    it "returns image/png for png format" do
+      expect(transformer.send(:output_content_type, { format: :png })).to eq("image/png")
+    end
+
+    it "returns image/jpeg for jpg format" do
+      expect(transformer.send(:output_content_type, { format: :jpg })).to eq("image/jpeg")
+    end
+
+    it "returns image/jpeg for jpeg format" do
+      expect(transformer.send(:output_content_type, { format: "jpeg" })).to eq("image/jpeg")
+    end
+
+    it "returns image/gif for gif format" do
+      expect(transformer.send(:output_content_type, { format: :gif })).to eq("image/gif")
+    end
+  end
+
   describe "process_preview" do
     before do
       @user.video.attach(
@@ -161,6 +189,56 @@ RSpec.describe "ActiveStorage::Crucible" do
 
       ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
       expect(@crucible_calls).to be_empty
+    end
+  end
+end
+
+RSpec.describe ActiveStorage::Crucible::Client do
+  describe "#post" do
+    it "sends JSON POST to the given URL" do
+      response = instance_double(Net::HTTPResponse, code: "200", body: "ok")
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:new).with("example.com", 443).and_return(http)
+      allow(http).to receive(:use_ssl=).with(true)
+      allow(http).to receive(:request).and_return(response)
+
+      result = described_class.new.post("https://example.com/test", { key: "value" })
+      expect(result).to eq(response)
+    end
+
+    it "raises on non-2xx response" do
+      response = instance_double(Net::HTTPResponse, code: "500", body: "Internal Server Error")
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:new).and_return(http)
+      allow(http).to receive(:use_ssl=)
+      allow(http).to receive(:request).and_return(response)
+
+      expect {
+        described_class.new.post("https://example.com/test", {})
+      }.to raise_error("Crucible request failed: 500 Internal Server Error")
+    end
+  end
+end
+
+RSpec.describe ActiveStorage::Crucible::PresignedUrl do
+  describe ".for" do
+    it "returns blob.url for :get method" do
+      blob = instance_double(ActiveStorage::Blob)
+      allow(blob).to receive(:url).with(expires_in: 1.hour).and_return("https://example.com/get-url")
+
+      result = described_class.for(blob, method: :get)
+      expect(result).to eq("https://example.com/get-url")
+    end
+
+    it "returns presigned PUT url for :put method" do
+      object = double("S3Object")
+      allow(object).to receive(:presigned_url).with(:put, expires_in: 3600).and_return("https://example.com/put-url")
+      service = double("S3Service")
+      allow(service).to receive(:object_for).and_return(object)
+      blob = instance_double(ActiveStorage::Blob, service: service, key: "test-key")
+
+      result = described_class.for(blob, method: :put)
+      expect(result).to eq("https://example.com/put-url")
     end
   end
 end

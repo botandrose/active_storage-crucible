@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
 require "simplecov"
-SimpleCov.start
+SimpleCov.start do
+  add_filter "/spec/"
+  minimum_coverage 100
+end
 
 RSpec.configure do |config|
   config.filter_run focus: true
