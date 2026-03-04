@@ -7,10 +7,6 @@ module ActiveStorage
         super || crucible_transformable?
       end
 
-      def previewable?
-        super || crucible_transformable?
-      end
-
       private
 
       def crucible_transformable?

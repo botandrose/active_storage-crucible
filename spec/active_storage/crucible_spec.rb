@@ -30,8 +30,17 @@ RSpec.describe "ActiveStorage::Crucible" do
       expect(call[:body][:blob_url]).to eq("https://presigned.example.com/source")
       expect(call[:body][:variant_url]).to eq("https://presigned.example.com/output")
       expect(call[:body][:dimensions]).to eq("100x100")
+      expect(call[:body][:rotation]).to eq(0)
       expect(call[:body][:format]).to eq("webp")
       expect(call[:body][:callback_url]).to include("/active_storage/async_variants/callbacks/")
+    end
+
+    it "reads rotation from blob metadata" do
+      @user.avatar.blob.update!(metadata: @user.avatar.blob.metadata.merge("rotation" => 90))
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
+
+      call = @crucible_calls.first
+      expect(call[:body][:rotation]).to eq(90)
     end
 
     it "attaches a placeholder output blob to the variant record" do
@@ -62,17 +71,45 @@ RSpec.describe "ActiveStorage::Crucible" do
       )
     end
 
-    it "posts to Crucible video/variant endpoint for video blobs" do
+    it "posts to Crucible video/preview for video with non-video output format" do
       ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :thumb)
 
       expect(@crucible_calls.size).to eq(1)
       call = @crucible_calls.first
-      expect(call[:url]).to eq("https://crucible.example.com/video/variant")
+      expect(call[:url]).to eq("https://crucible.example.com/video/preview")
       expect(call[:body][:dimensions]).to eq("640x480")
+      expect(call[:body][:preview_image_url]).to eq("https://presigned.example.com/output")
+      expect(call[:body][:preview_image_variant_url]).to eq("https://presigned.example.com/output")
+    end
+
+    it "posts to Crucible video/variant for video with video output format" do
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
+
+      expect(@crucible_calls.size).to eq(1)
+      call = @crucible_calls.first
+      expect(call[:url]).to eq("https://crucible.example.com/video/variant")
+      expect(call[:body][:dimensions]).to eq("1280x720")
+      expect(call[:body][:format]).to eq("mp4")
+    end
+
+    it "falls back to video_format from blob metadata when no format specified" do
+      @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "webm"))
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
+
+      call = @crucible_calls.first
+      expect(call[:body][:format]).to eq("mp4")
+    end
+
+    it "reads rotation from blob metadata" do
+      @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("rotation" => 180))
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
+
+      call = @crucible_calls.first
+      expect(call[:body][:rotation]).to eq(180)
     end
   end
 
-  describe "video preview" do
+  describe "process_preview" do
     before do
       @user.video.attach(
         io: File.open("spec/support/fixtures/image.png"),
@@ -80,12 +117,12 @@ RSpec.describe "ActiveStorage::Crucible" do
         content_type: "video/mp4",
         identify: false,
       )
-      stub_s3_service
     end
 
-    it "posts to Crucible video/preview endpoint for video blobs on S3" do
-      preview = @user.video.preview(resize_to_limit: [640, 480], format: :webp)
-      preview.process
+    it "posts to Crucible video/preview endpoint" do
+      blob = @user.video.blob
+      variation = @user.video.variant(:thumb).variation
+      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
 
       expect(@crucible_calls.size).to eq(1)
       call = @crucible_calls.first
@@ -93,37 +130,37 @@ RSpec.describe "ActiveStorage::Crucible" do
       expect(call[:body][:blob_url]).to eq("https://presigned.example.com/source")
       expect(call[:body][:preview_image_url]).to eq("https://presigned.example.com/output")
       expect(call[:body][:preview_image_variant_url]).to eq("https://presigned.example.com/output")
-      expect(@user.video.blob.preview_image).to be_attached
     end
 
-    it "falls back to blob URL when preview is not yet processed" do
-      preview = @user.video.preview(resize_to_limit: [640, 480], format: :webp)
-      preview.process
+    it "attaches a preview image blob to the video blob" do
+      blob = @user.video.blob
+      variation = @user.video.variant(:thumb).variation
+      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
 
-      url = preview.url
-      expect(url).to be_present
+      expect(blob.preview_image).to be_attached
+      expect(blob.preview_image.blob.content_type).to eq("image/jpeg")
     end
 
-    it "does not re-process when preview_image is already attached" do
-      preview = @user.video.preview(resize_to_limit: [640, 480], format: :webp)
-      preview.process
+    it "creates a variant record in processing state" do
+      blob = @user.video.blob
+      variation = @user.video.variant(:thumb).variation
+      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
+
+      preview_blob = blob.preview_image.blob
+      record = preview_blob.variant_records.find_by(variation_digest: variation.digest)
+      expect(record).to be_present
+      expect(record.state).to eq("processing")
+      expect(record.image).to be_attached
+    end
+
+    it "does not re-process when already processing" do
+      blob = @user.video.blob
+      variation = @user.video.variant(:thumb).variation
+      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
       @crucible_calls.clear
 
-      preview.process
+      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
       expect(@crucible_calls).to be_empty
     end
-
-    it "falls through to super for non-video blobs" do
-      expect {
-        @user.avatar.blob.preview(resize_to_limit: [100, 100])
-      }.to raise_error(ActiveStorage::UnpreviewableError)
-    end
-  end
-
-  private
-
-  def stub_s3_service
-    allow_any_instance_of(ActiveStorage::Service::DiskService).to receive(:respond_to?).and_call_original
-    allow_any_instance_of(ActiveStorage::Service::DiskService).to receive(:respond_to?).with(:bucket).and_return(true)
   end
 end
