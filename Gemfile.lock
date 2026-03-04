@@ -1,5 +1,6 @@
-PATH
-  remote: ../active_storage-async_variants
+GIT
+  remote: https://github.com/botandrose/active_storage-async_variants.git
+  revision: 5023f2b3d6074435196c43cedcfd117f9433db75
   specs:
     active_storage-async_variants (0.1.0)
       activestorage (>= 7.1)

@@ -4,7 +4,7 @@ source "https://rubygems.org"
 
 gemspec
 
-gem "active_storage-async_variants", path: "../active_storage-async_variants"
+gem "active_storage-async_variants", github: "botandrose/active_storage-async_variants"
 
 gem "irb"
 gem "rake", "~> 13.0"
