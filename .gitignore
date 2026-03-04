@@ -10,6 +10,10 @@
 # rspec failure tracking
 .rspec_status
 
+# Lockfiles (gem, not app)
+Gemfile.lock
+gemfiles/*.gemfile.lock
+
 log/*.log
 
 # Dummy app artifacts
