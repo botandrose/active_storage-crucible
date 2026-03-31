@@ -56,6 +56,7 @@ module ActiveStorage
             dimensions: dimensions,
             rotation: rotation,
             format: options[:format].to_s,
+            content_type: output_content_type(options),
             callback_url: callback_url,
           })
         else
@@ -65,6 +66,7 @@ module ActiveStorage
             dimensions: dimensions,
             rotation: rotation,
             format: options[:format]&.to_s,
+            content_type: output_content_type(options),
             callback_url: callback_url,
           })
         end

@@ -90,6 +90,7 @@ RSpec.describe "ActiveStorage::Crucible" do
       expect(call[:url]).to eq("https://crucible.example.com/video/variant")
       expect(call[:body][:dimensions]).to eq("1280x720")
       expect(call[:body][:format]).to eq("mp4")
+      expect(call[:body][:content_type]).to eq("video/mp4")
     end
 
     it "uses explicit video format over video_format from blob metadata" do
@@ -121,6 +122,30 @@ RSpec.describe "ActiveStorage::Crucible" do
 
       call = @crucible_calls.first
       expect(call[:body][:rotation]).to eq(180)
+    end
+  end
+
+  describe "BlobExtension#representation" do
+    before do
+      @user.video.attach(
+        io: File.open("spec/support/fixtures/image.png"),
+        filename: "clip.mp4",
+        content_type: "video/mp4",
+        identify: false,
+      )
+    end
+
+    it "returns a variant for video output formats" do
+      blob = @user.video.blob
+      result = blob.representation(format: :mp4, resize_to_limit: [1280, 720])
+      expect(result).to be_a(ActiveStorage::VariantWithRecord)
+    end
+
+    it "returns a preview for non-video output formats" do
+      blob = @user.video.blob
+      allow(blob).to receive(:previewable?).and_return(true)
+      result = blob.representation(format: :webp, resize_to_limit: [100, 100])
+      expect(result).to be_a(ActiveStorage::Preview)
     end
   end
 
@@ -157,6 +182,10 @@ RSpec.describe "ActiveStorage::Crucible" do
 
     it "returns video/webm for webm format" do
       expect(transformer.send(:output_content_type, { format: :webm })).to eq("video/webm")
+    end
+
+    it "returns application/octet-stream for unknown format" do
+      expect(transformer.send(:output_content_type, { format: :unknown })).to eq("application/octet-stream")
     end
   end
 
@@ -253,12 +282,12 @@ RSpec.describe ActiveStorage::Crucible::PresignedUrl do
       expect(result).to eq("https://example.com/get-url")
     end
 
-    it "returns presigned PUT url for :put method" do
+    it "returns presigned PUT url for :put method with content_type" do
       object = double("S3Object")
-      allow(object).to receive(:presigned_url).with(:put, expires_in: 3600).and_return("https://example.com/put-url")
+      allow(object).to receive(:presigned_url).with(:put, expires_in: 3600, content_type: "video/mp4").and_return("https://example.com/put-url")
       service = double("S3Service")
       allow(service).to receive(:object_for).and_return(object)
-      blob = instance_double(ActiveStorage::Blob, service: service, key: "test-key")
+      blob = instance_double(ActiveStorage::Blob, service: service, key: "test-key", content_type: "video/mp4")
 
       result = described_class.for(blob, method: :put)
       expect(result).to eq("https://example.com/put-url")

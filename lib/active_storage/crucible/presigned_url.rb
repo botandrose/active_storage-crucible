@@ -10,7 +10,7 @@ module ActiveStorage
         when :put
           service = blob.service
           object = service.send(:object_for, blob.key)
-          object.presigned_url(:put, expires_in: expires_in.to_i)
+          object.presigned_url(:put, expires_in: expires_in.to_i, content_type: blob.content_type)
         end
       end
     end
