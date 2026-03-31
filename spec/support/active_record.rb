@@ -75,6 +75,10 @@ RSpec.configure do |config|
           format: :mp4,
           transformer: ActiveStorage::Crucible::Transformer,
           fallback: :original
+        attachable.variant :unformatted,
+          resize_to_limit: [1280, 720],
+          transformer: ActiveStorage::Crucible::Transformer,
+          fallback: :original
       end
     end
   end

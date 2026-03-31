@@ -12,6 +12,11 @@ module ActiveStorage
         rotation = blob.metadata["rotation"].to_i
         video_format = blob.metadata["video_format"]
 
+        if blob.video? && options[:format].to_s == "png"
+          options[:format] = video_format || raise(ArgumentError,
+            "No video format specified for video variant and no video_format in blob metadata")
+        end
+
         output_blob = ActiveStorage::Blob.create_before_direct_upload!(
           filename: "#{blob.filename.base}.#{options[:format] || blob.filename.extension}",
           content_type: output_content_type(options),
@@ -50,7 +55,7 @@ module ActiveStorage
             variant_url: variant_url,
             dimensions: dimensions,
             rotation: rotation,
-            format: (options[:format] || video_format)&.to_s,
+            format: options[:format].to_s,
             callback_url: callback_url,
           })
         else
@@ -123,6 +128,8 @@ module ActiveStorage
         when "png" then "image/png"
         when "jpg", "jpeg" then "image/jpeg"
         when "gif" then "image/gif"
+        when "mp4" then "video/mp4"
+        when "webm" then "video/webm"
         else "application/octet-stream"
         end
       end

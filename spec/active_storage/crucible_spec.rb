@@ -92,12 +92,27 @@ RSpec.describe "ActiveStorage::Crucible" do
       expect(call[:body][:format]).to eq("mp4")
     end
 
-    it "falls back to video_format from blob metadata when no format specified" do
+    it "uses explicit video format over video_format from blob metadata" do
       @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "webm"))
       ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
 
       call = @crucible_calls.first
       expect(call[:body][:format]).to eq("mp4")
+    end
+
+    it "falls back to video_format from blob metadata when variant has no video format" do
+      @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "webm"))
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :unformatted)
+
+      call = @crucible_calls.first
+      expect(call[:url]).to eq("https://crucible.example.com/video/variant")
+      expect(call[:body][:format]).to eq("webm")
+    end
+
+    it "raises when variant has no video format and no video_format in blob metadata" do
+      expect {
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :unformatted)
+      }.to raise_error(ArgumentError, "No video format specified for video variant and no video_format in blob metadata")
     end
 
     it "reads rotation from blob metadata" do
@@ -134,6 +149,14 @@ RSpec.describe "ActiveStorage::Crucible" do
 
     it "returns image/gif for gif format" do
       expect(transformer.send(:output_content_type, { format: :gif })).to eq("image/gif")
+    end
+
+    it "returns video/mp4 for mp4 format" do
+      expect(transformer.send(:output_content_type, { format: :mp4 })).to eq("video/mp4")
+    end
+
+    it "returns video/webm for webm format" do
+      expect(transformer.send(:output_content_type, { format: :webm })).to eq("video/webm")
     end
   end
 
