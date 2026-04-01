@@ -219,6 +219,10 @@ RSpec.describe "ActiveStorage::Crucible" do
   describe "output_content_type" do
     subject(:transformer) { ActiveStorage::Crucible::Transformer.new }
 
+    it "returns image/webp for webp format" do
+      expect(transformer.send(:output_content_type, { format: :webp })).to eq("image/webp")
+    end
+
     it "returns image/png for png format" do
       expect(transformer.send(:output_content_type, { format: :png })).to eq("image/png")
     end
