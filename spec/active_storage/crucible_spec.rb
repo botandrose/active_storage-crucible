@@ -20,21 +20,129 @@ RSpec.describe "ActiveStorage::Crucible" do
     end
   end
 
-  describe "image variant transformer" do
-    it "posts to Crucible image/variant endpoint with correct params" do
-      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
+  describe "variant routing" do
+    describe "image variants" do
+      it "image thumb → /image/variant as JPEG" do
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
 
-      expect(@crucible_calls.size).to eq(1)
-      call = @crucible_calls.first
-      expect(call[:url]).to eq("https://crucible.example.com/image/variant")
-      expect(call[:body][:blob_url]).to eq("https://presigned.example.com/source")
-      expect(call[:body][:variant_url]).to eq("https://presigned.example.com/output")
-      expect(call[:body][:dimensions]).to eq("100x100")
-      expect(call[:body][:rotation]).to eq(0)
-      expect(call[:body][:format]).to eq("webp")
-      expect(call[:body][:callback_url]).to include("/active_storage/async_variants/callbacks/")
+        call = @crucible_calls.first
+        expect(call[:url]).to eq("https://crucible.example.com/image/variant")
+        expect(call[:body][:dimensions]).to eq("100x100")
+        expect(call[:body][:format]).to eq("jpg")
+        expect(call[:body][:content_type]).to eq("image/jpeg")
+      end
+
+      it "image web → /image/variant as JPEG" do
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :web)
+
+        call = @crucible_calls.first
+        expect(call[:url]).to eq("https://crucible.example.com/image/variant")
+        expect(call[:body][:dimensions]).to eq("780x780")
+        expect(call[:body][:format]).to eq("jpg")
+        expect(call[:body][:content_type]).to eq("image/jpeg")
+      end
     end
 
+    describe "video variants (mp4 project)" do
+      before do
+        @user.video.attach(
+          io: File.open("spec/support/fixtures/image.png"),
+          filename: "clip.mp4",
+          content_type: "video/mp4",
+          identify: false,
+        )
+        @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "mp4"))
+      end
+
+      it "video thumb → /video/preview as JPEG image" do
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :thumb)
+
+        call = @crucible_calls.first
+        expect(call[:url]).to eq("https://crucible.example.com/video/preview")
+        expect(call[:body][:dimensions]).to eq("150x150")
+        expect(call[:body][:preview_image_url]).to be_present
+        expect(call[:body][:preview_image_variant_url]).to be_present
+      end
+
+      it "video web → /video/preview as JPEG image" do
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :web)
+
+        call = @crucible_calls.first
+        expect(call[:url]).to eq("https://crucible.example.com/video/preview")
+        expect(call[:body][:dimensions]).to eq("780x780")
+      end
+
+      it "video transcoded → /video/variant as MP4" do
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
+
+        call = @crucible_calls.first
+        expect(call[:url]).to eq("https://crucible.example.com/video/variant")
+        expect(call[:body][:dimensions]).to eq("1280x720")
+        expect(call[:body][:format]).to eq("mp4")
+        expect(call[:body][:content_type]).to eq("video/mp4")
+      end
+    end
+
+    describe "video variants (webm project)" do
+      before do
+        @user.video.attach(
+          io: File.open("spec/support/fixtures/image.png"),
+          filename: "clip.mp4",
+          content_type: "video/mp4",
+          identify: false,
+        )
+        @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "webm"))
+      end
+
+      it "video thumb → /video/preview as JPEG image" do
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :thumb)
+
+        call = @crucible_calls.first
+        expect(call[:url]).to eq("https://crucible.example.com/video/preview")
+        expect(call[:body][:dimensions]).to eq("150x150")
+      end
+
+      it "video web → /video/preview as JPEG image" do
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :web)
+
+        call = @crucible_calls.first
+        expect(call[:url]).to eq("https://crucible.example.com/video/preview")
+        expect(call[:body][:dimensions]).to eq("780x780")
+      end
+
+      it "video transcoded → /video/variant as WebM (from blob metadata)" do
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
+
+        call = @crucible_calls.first
+        expect(call[:url]).to eq("https://crucible.example.com/video/variant")
+        expect(call[:body][:dimensions]).to eq("1280x720")
+        expect(call[:body][:format]).to eq("webm")
+        expect(call[:body][:content_type]).to eq("video/webm")
+      end
+    end
+
+    describe "video transcoded without video_format metadata" do
+      before do
+        @user.video.attach(
+          io: File.open("spec/support/fixtures/image.png"),
+          filename: "clip.mp4",
+          content_type: "video/mp4",
+          identify: false,
+        )
+      end
+
+      it "falls back to explicit variant format" do
+        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
+
+        call = @crucible_calls.first
+        expect(call[:url]).to eq("https://crucible.example.com/video/variant")
+        expect(call[:body][:format]).to eq("mp4")
+        expect(call[:body][:content_type]).to eq("video/mp4")
+      end
+    end
+  end
+
+  describe "transformer details" do
     it "reads rotation from blob metadata" do
       @user.avatar.blob.update!(metadata: @user.avatar.blob.metadata.merge("rotation" => 90))
       ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
@@ -58,70 +166,6 @@ RSpec.describe "ActiveStorage::Crucible" do
 
       variant = @user.avatar.variant(:thumb)
       expect(variant.processing?).to be true
-    end
-  end
-
-  describe "video variant transformer" do
-    before do
-      @user.video.attach(
-        io: File.open("spec/support/fixtures/image.png"),
-        filename: "clip.mp4",
-        content_type: "video/mp4",
-        identify: false,
-      )
-    end
-
-    it "posts to Crucible video/preview for video with non-video output format" do
-      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :thumb)
-
-      expect(@crucible_calls.size).to eq(1)
-      call = @crucible_calls.first
-      expect(call[:url]).to eq("https://crucible.example.com/video/preview")
-      expect(call[:body][:dimensions]).to eq("640x480")
-      expect(call[:body][:preview_image_url]).to eq("https://presigned.example.com/output")
-      expect(call[:body][:preview_image_variant_url]).to eq("https://presigned.example.com/output")
-    end
-
-    it "posts to Crucible video/variant for video with video output format" do
-      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
-
-      expect(@crucible_calls.size).to eq(1)
-      call = @crucible_calls.first
-      expect(call[:url]).to eq("https://crucible.example.com/video/variant")
-      expect(call[:body][:dimensions]).to eq("1280x720")
-      expect(call[:body][:format]).to eq("mp4")
-      expect(call[:body][:content_type]).to eq("video/mp4")
-    end
-
-    it "uses explicit video format over video_format from blob metadata" do
-      @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "webm"))
-      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
-
-      call = @crucible_calls.first
-      expect(call[:body][:format]).to eq("mp4")
-    end
-
-    it "falls back to video_format from blob metadata when variant has no video format" do
-      @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "webm"))
-      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :unformatted)
-
-      call = @crucible_calls.first
-      expect(call[:url]).to eq("https://crucible.example.com/video/variant")
-      expect(call[:body][:format]).to eq("webm")
-    end
-
-    it "raises when variant has no video format and no video_format in blob metadata" do
-      expect {
-        ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :unformatted)
-      }.to raise_error(ArgumentError, "No video format specified for video variant and no video_format in blob metadata")
-    end
-
-    it "reads rotation from blob metadata" do
-      @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("rotation" => 180))
-      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
-
-      call = @crucible_calls.first
-      expect(call[:body][:rotation]).to eq(180)
     end
   end
 

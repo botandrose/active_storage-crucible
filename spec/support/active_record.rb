@@ -59,15 +59,25 @@ RSpec.configure do |config|
       has_one_attached :avatar do |attachable|
         attachable.variant :thumb,
           resize_to_limit: [100, 100],
-          format: :webp,
+          format: "jpg",
+          transformer: ActiveStorage::Crucible::Transformer,
+          fallback: :original
+        attachable.variant :web,
+          resize_to_limit: [780, 780],
+          format: "jpg",
           transformer: ActiveStorage::Crucible::Transformer,
           fallback: :original
       end
 
       has_one_attached :video do |attachable|
         attachable.variant :thumb,
-          resize_to_limit: [640, 480],
-          format: :webp,
+          resize_to_limit: [150, 150],
+          format: "jpg",
+          transformer: ActiveStorage::Crucible::Transformer,
+          fallback: :original
+        attachable.variant :web,
+          resize_to_limit: [780, 780],
+          format: "jpg",
           transformer: ActiveStorage::Crucible::Transformer,
           fallback: :original
         attachable.variant :transcoded,
