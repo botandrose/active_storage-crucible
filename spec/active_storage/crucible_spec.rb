@@ -9,13 +9,16 @@ RSpec.describe "ActiveStorage::Crucible" do
       content_type: "image/png",
     )
     @crucible_calls = []
+    @presigned_put_blobs = []
     allow_any_instance_of(ActiveStorage::Crucible::Client).to receive(:post) do |_client, url, body|
       @crucible_calls << { url: url, body: body }
     end
-    allow(ActiveStorage::Crucible::PresignedUrl).to receive(:for) do |_blob, method:|
+    allow(ActiveStorage::Crucible::PresignedUrl).to receive(:for) do |blob, method:|
       case method
       when :get then "https://presigned.example.com/source"
-      when :put then "https://presigned.example.com/output"
+      when :put
+        @presigned_put_blobs << blob
+        "https://presigned.example.com/output"
       end
     end
   end
@@ -30,6 +33,9 @@ RSpec.describe "ActiveStorage::Crucible" do
         expect(call[:body][:dimensions]).to eq("100x100")
         expect(call[:body][:format]).to eq("jpg")
         expect(call[:body][:content_type]).to eq("image/jpeg")
+        output_blob = @presigned_put_blobs.first
+        expect(output_blob.content_type).to eq("image/jpeg")
+        expect(output_blob.filename.to_s).to eq("photo.jpg")
       end
 
       it "image web → /image/variant as JPEG" do
@@ -40,6 +46,9 @@ RSpec.describe "ActiveStorage::Crucible" do
         expect(call[:body][:dimensions]).to eq("780x780")
         expect(call[:body][:format]).to eq("jpg")
         expect(call[:body][:content_type]).to eq("image/jpeg")
+        output_blob = @presigned_put_blobs.first
+        expect(output_blob.content_type).to eq("image/jpeg")
+        expect(output_blob.filename.to_s).to eq("photo.jpg")
       end
     end
 
@@ -80,6 +89,9 @@ RSpec.describe "ActiveStorage::Crucible" do
         expect(call[:body][:dimensions]).to eq("1280x720")
         expect(call[:body][:format]).to eq("mp4")
         expect(call[:body][:content_type]).to eq("video/mp4")
+        output_blob = @presigned_put_blobs.first
+        expect(output_blob.content_type).to eq("video/mp4")
+        expect(output_blob.filename.to_s).to eq("clip.mp4")
       end
     end
 
@@ -118,6 +130,9 @@ RSpec.describe "ActiveStorage::Crucible" do
         expect(call[:body][:dimensions]).to eq("1280x720")
         expect(call[:body][:format]).to eq("webm")
         expect(call[:body][:content_type]).to eq("video/webm")
+        output_blob = @presigned_put_blobs.first
+        expect(output_blob.content_type).to eq("video/webm")
+        expect(output_blob.filename.to_s).to eq("clip.webm")
       end
     end
 

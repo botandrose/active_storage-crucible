@@ -12,21 +12,13 @@ module ActiveStorage
         rotation = blob.metadata["rotation"].to_i
         video_format = blob.metadata["video_format"]
 
-        output_blob = ActiveStorage::Blob.create_before_direct_upload!(
-          filename: "#{blob.filename.base}.#{options[:format] || blob.filename.extension}",
-          content_type: output_content_type(options),
-          service_name: blob.service_name,
-          byte_size: 0,
-          checksum: "0",
-        )
-        output_blob.metadata[:analyzed] = true
-        variant_record.image.attach(output_blob)
-
         source_url = PresignedUrl.for(blob, method: :get)
-        variant_url = PresignedUrl.for(output_blob, method: :put)
         dimensions = extract_dimensions(options)
 
         if blob.video? && !video_output_format?(options[:format])
+          output_blob = create_output_blob(blob, variant_record, options)
+          variant_url = PresignedUrl.for(output_blob, method: :put)
+
           preview_blob = ActiveStorage::Blob.create_before_direct_upload!(
             filename: "#{blob.filename.base}.jpg",
             content_type: "image/jpeg",
@@ -46,6 +38,9 @@ module ActiveStorage
           })
         elsif blob.video?
           format = video_format || options[:format].to_s
+          output_blob = create_output_blob(blob, variant_record, options.merge(format: format))
+          variant_url = PresignedUrl.for(output_blob, method: :put)
+
           Client.new.post("#{endpoint}/video/variant", {
             blob_url: source_url,
             variant_url: variant_url,
@@ -56,6 +51,9 @@ module ActiveStorage
             callback_url: callback_url,
           })
         else
+          output_blob = create_output_blob(blob, variant_record, options)
+          variant_url = PresignedUrl.for(output_blob, method: :put)
+
           Client.new.post("#{endpoint}/image/variant", {
             blob_url: source_url,
             variant_url: variant_url,
@@ -108,6 +106,19 @@ module ActiveStorage
       end
 
       private
+
+      def create_output_blob(blob, variant_record, options)
+        output_blob = ActiveStorage::Blob.create_before_direct_upload!(
+          filename: "#{blob.filename.base}.#{options[:format] || blob.filename.extension}",
+          content_type: output_content_type(options),
+          service_name: blob.service_name,
+          byte_size: 0,
+          checksum: "0",
+        )
+        output_blob.metadata[:analyzed] = true
+        variant_record.image.attach(output_blob)
+        output_blob
+      end
 
       def endpoint
         ActiveStorage::Crucible.endpoint
