@@ -19,7 +19,7 @@ module ActiveStorage
       private
 
       def crucible_transformable?
-        video? && ActiveStorage::Crucible.endpoint.present?
+        (image? || video?) && ActiveStorage::Crucible.endpoint.present?
       end
 
       def video_output_format?(format)

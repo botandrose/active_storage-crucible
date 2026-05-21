@@ -335,6 +335,39 @@ RSpec.describe ActiveStorage::Crucible::Client do
   end
 end
 
+RSpec.describe ActiveStorage::Crucible::BlobExtension do
+  describe "#variable?" do
+    def build_blob(content_type)
+      ActiveStorage::Blob.create_before_direct_upload!(
+        filename: "x",
+        content_type: content_type,
+        byte_size: 0,
+        checksum: "0",
+      )
+    end
+
+    it "is true for any image/* content_type" do
+      expect(build_blob("image/x-raw-canon").variable?).to be true
+    end
+
+    it "is true for any video/* content_type" do
+      expect(build_blob("video/quicktime").variable?).to be true
+    end
+
+    it "is false for non-image/non-video content types" do
+      expect(build_blob("application/pdf").variable?).to be false
+    end
+
+    it "is false when Crucible.endpoint is unset" do
+      original = ActiveStorage::Crucible.endpoint
+      ActiveStorage::Crucible.endpoint = nil
+      expect(build_blob("image/x-raw-canon").variable?).to be false
+    ensure
+      ActiveStorage::Crucible.endpoint = original
+    end
+  end
+end
+
 RSpec.describe ActiveStorage::Crucible::PresignedUrl do
   describe ".for" do
     it "returns blob.url for :get method" do
