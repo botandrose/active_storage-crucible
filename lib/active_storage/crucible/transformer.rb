@@ -28,10 +28,16 @@ module ActiveStorage
           )
           preview_blob.metadata[:analyzed] = true
 
+          # Pass the requested variant format so Crucible writes the right
+          # file extension via vips and PUTs with a Content-Type that matches
+          # what we signed the variant URL for (anything else gives
+          # 403 SignatureDoesNotMatch). Crucible derives the Content-Type
+          # from `format` via Marcel so there's a single source of truth.
           Client.new.post("#{endpoint}/video/preview", {
             blob_url: source_url,
             dimensions: dimensions,
             rotation: rotation,
+            format: options[:format]&.to_s,
             preview_image_url: PresignedUrl.for(preview_blob, method: :put),
             preview_image_variant_url: variant_url,
             callback_url: callback_url,
@@ -41,13 +47,15 @@ module ActiveStorage
           output_blob = create_output_blob(blob, variant_record, options.merge(format: format))
           variant_url = PresignedUrl.for(output_blob, method: :put)
 
+          # Only pass `format` -- Crucible derives Content-Type from it via
+          # the same canonical mapping output_content_type uses on this side,
+          # so the PUT header always matches what the URL was signed for.
           Client.new.post("#{endpoint}/video/variant", {
             blob_url: source_url,
             variant_url: variant_url,
             dimensions: dimensions,
             rotation: rotation,
             format: format,
-            content_type: output_content_type(format: format),
             callback_url: callback_url,
           })
         else
@@ -60,7 +68,6 @@ module ActiveStorage
             dimensions: dimensions,
             rotation: rotation,
             format: options[:format]&.to_s,
-            content_type: output_content_type(options),
             callback_url: callback_url,
           })
         end

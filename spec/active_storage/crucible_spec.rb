@@ -32,7 +32,6 @@ RSpec.describe "ActiveStorage::Crucible" do
         expect(call[:url]).to eq("https://crucible.example.com/image/variant")
         expect(call[:body][:dimensions]).to eq("100x100")
         expect(call[:body][:format]).to eq("jpg")
-        expect(call[:body][:content_type]).to eq("image/jpeg")
         output_blob = @presigned_put_blobs.first
         expect(output_blob.content_type).to eq("image/jpeg")
         expect(output_blob.filename.to_s).to eq("photo.jpg")
@@ -45,7 +44,6 @@ RSpec.describe "ActiveStorage::Crucible" do
         expect(call[:url]).to eq("https://crucible.example.com/image/variant")
         expect(call[:body][:dimensions]).to eq("780x780")
         expect(call[:body][:format]).to eq("jpg")
-        expect(call[:body][:content_type]).to eq("image/jpeg")
         output_blob = @presigned_put_blobs.first
         expect(output_blob.content_type).to eq("image/jpeg")
         expect(output_blob.filename.to_s).to eq("photo.jpg")
@@ -88,7 +86,6 @@ RSpec.describe "ActiveStorage::Crucible" do
         expect(call[:url]).to eq("https://crucible.example.com/video/variant")
         expect(call[:body][:dimensions]).to eq("1280x720")
         expect(call[:body][:format]).to eq("mp4")
-        expect(call[:body][:content_type]).to eq("video/mp4")
         output_blob = @presigned_put_blobs.first
         expect(output_blob.content_type).to eq("video/mp4")
         expect(output_blob.filename.to_s).to eq("clip.mp4")
@@ -129,7 +126,6 @@ RSpec.describe "ActiveStorage::Crucible" do
         expect(call[:url]).to eq("https://crucible.example.com/video/variant")
         expect(call[:body][:dimensions]).to eq("1280x720")
         expect(call[:body][:format]).to eq("webm")
-        expect(call[:body][:content_type]).to eq("video/webm")
         output_blob = @presigned_put_blobs.first
         expect(output_blob.content_type).to eq("video/webm")
         expect(output_blob.filename.to_s).to eq("clip.webm")
@@ -152,7 +148,6 @@ RSpec.describe "ActiveStorage::Crucible" do
         call = @crucible_calls.first
         expect(call[:url]).to eq("https://crucible.example.com/video/variant")
         expect(call[:body][:format]).to eq("mp4")
-        expect(call[:body][:content_type]).to eq("video/mp4")
       end
     end
   end
