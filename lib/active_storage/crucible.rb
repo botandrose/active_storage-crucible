@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "active_storage/async_variants"
+
 require_relative "crucible/version"
 require_relative "crucible/client"
 require_relative "crucible/presigned_url"
