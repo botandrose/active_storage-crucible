@@ -45,6 +45,9 @@ RSpec.configure do |config|
           t.string :state, default: "pending"
           t.text :error
           t.integer :attempts, default: 0
+          t.integer :progress
+          t.datetime :last_heartbeat_at
+          t.datetime :created_at
           t.index [:blob_id, :variation_digest], name: "index_active_storage_variant_records_uniqueness", unique: true
           t.foreign_key :active_storage_blobs, column: :blob_id
         end
