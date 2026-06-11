@@ -383,5 +383,17 @@ RSpec.describe ActiveStorage::Crucible::PresignedUrl do
       result = described_class.for(blob, method: :put)
       expect(result).to eq("https://example.com/put-url")
     end
+
+    it "presigns the PUT against the primary when the blob is on a MirrorService" do
+      object = double("S3Object")
+      allow(object).to receive(:presigned_url).with(:put, expires_in: 3600, content_type: "video/mp4").and_return("https://example.com/primary-put-url")
+      primary = double("S3Service")
+      allow(primary).to receive(:object_for).with("test-key").and_return(object)
+      mirror_service = double("MirrorService", primary: primary)
+      blob = instance_double(ActiveStorage::Blob, service: mirror_service, key: "test-key", content_type: "video/mp4")
+
+      result = described_class.for(blob, method: :put)
+      expect(result).to eq("https://example.com/primary-put-url")
+    end
   end
 end

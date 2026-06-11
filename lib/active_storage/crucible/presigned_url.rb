@@ -9,6 +9,7 @@ module ActiveStorage
           blob.url(expires_in: expires_in)
         when :put
           service = blob.service
+          service = service.primary if service.respond_to?(:primary)
           object = service.send(:object_for, blob.key)
           object.presigned_url(:put, expires_in: expires_in.to_i, content_type: blob.content_type)
         end
