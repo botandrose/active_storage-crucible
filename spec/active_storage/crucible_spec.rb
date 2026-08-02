@@ -305,6 +305,37 @@ end
 
 RSpec.describe ActiveStorage::Crucible::Client do
   describe "#post" do
+    def capture_request(api_token:)
+      response = instance_double(Net::HTTPResponse, code: "200", body: "ok")
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:new).and_return(http)
+      allow(http).to receive(:use_ssl=)
+      request = nil
+      allow(http).to receive(:request) { |req| request = req; response }
+
+      original = ActiveStorage::Crucible.api_token
+      ActiveStorage::Crucible.api_token = api_token
+      begin
+        described_class.new.post("https://example.com/test", {})
+      ensure
+        ActiveStorage::Crucible.api_token = original
+      end
+      request
+    end
+
+    it "authenticates with the configured api_token" do
+      request = capture_request(api_token: "s3kr1t")
+
+      expect(request["Authorization"]).to eq "Bearer s3kr1t"
+    end
+
+    # Crucible answers 401 either way; sending "Bearer " would only obscure why.
+    it "omits the Authorization header when no api_token is configured" do
+      request = capture_request(api_token: nil)
+
+      expect(request["Authorization"]).to be_nil
+    end
+
     it "sends JSON POST to the given URL" do
       response = instance_double(Net::HTTPResponse, code: "200", body: "ok")
       http = instance_double(Net::HTTP)

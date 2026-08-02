@@ -21,6 +21,7 @@ Requires an S3-compatible storage service (the gem generates presigned URLs for 
 ```ruby
 # config/initializers/crucible.rb
 ActiveStorage::Crucible.endpoint = "https://crucible.example.com"
+ActiveStorage::Crucible.api_token = "..."
 ```
 
 Or with a block:
@@ -28,8 +29,15 @@ Or with a block:
 ```ruby
 ActiveStorage::Crucible.configure do |config|
   config.endpoint = ENV["CRUCIBLE_ENDPOINT"]
+  config.api_token = ENV["CRUCIBLE_API_TOKEN"]
 end
 ```
+
+Crucible requires the token on every request and answers `401` without it, so
+`api_token` must be set to the value in that Crucible deployment's encrypted
+credentials. It belongs with the endpoint: each deployment has its own token, so
+an app that talks to more than one (staging vs. production, say) must set the
+pair together.
 
 ## Usage
 

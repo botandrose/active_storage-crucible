@@ -11,6 +11,7 @@ require_relative "crucible/blob_extension"
 module ActiveStorage
   module Crucible
     mattr_accessor :endpoint
+    mattr_accessor :api_token
 
     def self.configure
       yield self
