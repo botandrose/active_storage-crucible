@@ -19,19 +19,31 @@ bundle exec rake                                     # Default task runs specs
 The gem is a Rails Engine that prepends extensions onto Active Storage classes:
 
 - **`Crucible` module** (`lib/active_storage/crucible.rb`) — Engine setup, configurable `endpoint` for the Crucible service
-- **`Transformer`** (`lib/active_storage/crucible/transformer.rb`) — Inherits from `ActiveStorage::AsyncVariants::Transformer`. Creates a placeholder output blob, generates presigned GET/PUT URLs, then POSTs to Crucible's `/image/variant` or `/video/variant` endpoint. Crucible processes asynchronously and calls back when done.
-- **`PreviewExtension`** (`lib/active_storage/crucible/preview_extension.rb`) — Prepended onto `ActiveStorage::Preview`. For video blobs on S3, creates placeholder blobs and POSTs to `/video/preview`. Returns the original blob URL as fallback while processing.
-- **`BlobExtension`** (`lib/active_storage/crucible/blob_extension.rb`) — Prepended onto `ActiveStorage::Blob`. Makes videos report as `variable?` and `previewable?` when Crucible is configured.
+- **`Transformer`** (`lib/active_storage/crucible/transformer.rb`) — Inherits from `ActiveStorage::AsyncVariants::Transformer`. `#initiate` reads the variant record's blob to pick one of three routes: an image → `/image/variant`; a video → `/video/variant` (transcode); or a video's extracted-frame placeholder → `/video/preview` (the stock preview graph). It creates the placeholder output blob and generates presigned GET/PUT URLs. Crucible processes asynchronously and calls back when done.
+- **`BlobExtension`** (`lib/active_storage/crucible/blob_extension.rb`) — Prepended onto `ActiveStorage::Blob`. Makes videos (and images) report as `variable?`, and videos as `previewable?`, when Crucible is configured — independent of a local ffmpeg, since Crucible extracts frames server-side. `#representation` routes video output formats (mp4/webm/…) to `variant` and everything else to `super`.
 - **`Client`** (`lib/active_storage/crucible/client.rb`) — Simple `Net::HTTP` wrapper that POSTs JSON to Crucible
 - **`PresignedUrl`** (`lib/active_storage/crucible/presigned_url.rb`) — Generates presigned S3 URLs for GET/PUT access to blobs
 
 ### Processing Flow
 
-1. Variant defined with `transformer: ActiveStorage::Crucible::Transformer`
-2. `async_variants` enqueues a `ProcessJob` which calls `Transformer#initiate`
-3. Transformer creates placeholder blob, gets presigned URLs, POSTs to Crucible
-4. Crucible processes the file and POSTs back to the callback URL
-5. `async_variants` callback controller marks variant as processed
+1. Variant defined with `transformer: ActiveStorage::Crucible::Transformer, async: true`
+2. `async_variants`' `ProcessJob` resolves `attachment.representation(name)` and calls `Transformer#initiate`
+3. `#initiate` resolves the source/output blobs, gets presigned URLs, POSTs to Crucible
+4. Crucible processes the file(s) and POSTs back to the callback URL
+5. `async_variants`' callback controller marks the variant processed and reconciles blob metadata
+
+### Video Previews (stock graph)
+
+Because videos are both `previewable?` and `variable?`, an image-format request
+(`representation(:thumb)`) resolves to a **preview**, matching stock Active Storage:
+the frame is persisted as the video's `preview_image` and the variant record hangs
+off the *frame* blob. `#initiate` detects this by finding the `preview_image`
+attachment whose blob is the variant record's blob, then POSTs `/video/preview` with
+both `preview_image_url` (the frame) and `preview_image_variant_url` (the resized
+output). The success callback reconciles both placeholders, so the frame is a
+legitimate persisted preview — not an orphan. A video *output* format
+(`representation(format: :mp4)`) instead resolves to a `variant` and transcodes via
+`/video/variant`, with the record on the video blob.
 
 ## Test Setup
 

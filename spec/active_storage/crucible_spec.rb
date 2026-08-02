@@ -247,60 +247,6 @@ RSpec.describe "ActiveStorage::Crucible" do
     end
   end
 
-  describe "process_preview" do
-    before do
-      @user.video.attach(
-        io: File.open("spec/support/fixtures/image.png"),
-        filename: "clip.mp4",
-        content_type: "video/mp4",
-        identify: false,
-      )
-    end
-
-    it "posts to Crucible video/preview endpoint" do
-      blob = @user.video.blob
-      variation = @user.video.variant(:thumb).variation
-      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
-
-      expect(@crucible_calls.size).to eq(1)
-      call = @crucible_calls.first
-      expect(call[:url]).to eq("https://crucible.example.com/video/preview")
-      expect(call[:body][:blob_url]).to eq("https://presigned.example.com/source")
-      expect(call[:body][:preview_image_url]).to eq("https://presigned.example.com/output")
-      expect(call[:body][:preview_image_variant_url]).to eq("https://presigned.example.com/output")
-    end
-
-    it "attaches a preview image blob to the video blob" do
-      blob = @user.video.blob
-      variation = @user.video.variant(:thumb).variation
-      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
-
-      expect(blob.preview_image).to be_attached
-      expect(blob.preview_image.blob.content_type).to eq("image/jpeg")
-    end
-
-    it "creates a variant record in processing state" do
-      blob = @user.video.blob
-      variation = @user.video.variant(:thumb).variation
-      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
-
-      preview_blob = blob.preview_image.blob
-      record = preview_blob.variant_records.find_by(variation_digest: variation.digest)
-      expect(record).to be_present
-      expect(record.state).to eq("processing")
-      expect(record.image).to be_attached
-    end
-
-    it "does not re-process when already processing" do
-      blob = @user.video.blob
-      variation = @user.video.variant(:thumb).variation
-      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
-      @crucible_calls.clear
-
-      ActiveStorage::Crucible::Transformer.new.process_preview(blob: blob, variation: variation)
-      expect(@crucible_calls).to be_empty
-    end
-  end
 end
 
 RSpec.describe ActiveStorage::Crucible::Client do
@@ -388,6 +334,38 @@ RSpec.describe ActiveStorage::Crucible::BlobExtension do
       original = ActiveStorage::Crucible.endpoint
       ActiveStorage::Crucible.endpoint = nil
       expect(build_blob("image/x-raw-canon").variable?).to be false
+    ensure
+      ActiveStorage::Crucible.endpoint = original
+    end
+  end
+
+  describe "#previewable?" do
+    # Drop the default previewers so stock previewable? is false, isolating the
+    # extension's contribution (Crucible extracts frames server-side, so a local
+    # ffmpeg must not be what decides previewability).
+    before { allow(ActiveStorage).to receive(:previewers).and_return([]) }
+
+    def build_blob(content_type)
+      ActiveStorage::Blob.create_before_direct_upload!(
+        filename: "x",
+        content_type: content_type,
+        byte_size: 0,
+        checksum: "0",
+      )
+    end
+
+    it "is true for videos when Crucible is configured, independent of local ffmpeg" do
+      expect(build_blob("video/quicktime").previewable?).to be true
+    end
+
+    it "is false for images (they take the variant path)" do
+      expect(build_blob("image/png").previewable?).to be false
+    end
+
+    it "is false for videos when Crucible.endpoint is unset" do
+      original = ActiveStorage::Crucible.endpoint
+      ActiveStorage::Crucible.endpoint = nil
+      expect(build_blob("video/quicktime").previewable?).to be false
     ensure
       ActiveStorage::Crucible.endpoint = original
     end

@@ -7,6 +7,14 @@ module ActiveStorage
         super || crucible_transformable?
       end
 
+      # Videos are previewable whenever Crucible is configured, regardless of a
+      # local ffmpeg. Crucible extracts the frame server-side, so video->image
+      # representations deterministically take the stock preview path rather than
+      # depending on what's installed on the worker.
+      def previewable?
+        super || (video? && ActiveStorage::Crucible.endpoint.present?)
+      end
+
       def representation(transformations)
         variation = ActiveStorage::Variation.wrap(transformations)
         if crucible_transformable? && video_output_format?(variation.transformations[:format])
