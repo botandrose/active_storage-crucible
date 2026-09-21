@@ -29,5 +29,5 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "activestorage", ">= 7.1"
-  spec.add_dependency "active_storage-async_variants"
+  spec.add_dependency "active_storage-async_variants", ">= 0.10"
 end

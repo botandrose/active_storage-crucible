@@ -102,11 +102,15 @@ While the preview is processing, the original video URL is served as a fallback.
 
 ### Preview flow
 
-1. A video preview is requested in a view
-2. `PreviewExtension#process` creates placeholder blobs for the preview image and its variant
-3. POSTs to Crucible's `/video/preview` endpoint with presigned URLs and a callback URL
-4. Crucible extracts a frame, resizes it, uploads both the preview image and variant
-5. Crucible POSTs to the callback URL to mark the variant as processed
+An image-format variant of a video is a stock `Preview`: the extracted frame is the video blob's `preview_image`, and the variant record hangs off that frame blob.
+
+1. `ProcessJob` resolves the attachment's `representation`, attaches a frame placeholder as the video's `preview_image` if none exists, and creates the variant record on the frame blob
+2. The transformer sees the record's blob is a video's `preview_image` and creates a placeholder output blob for the resized still
+3. POSTs to Crucible's `/video/preview` endpoint with presigned PUT URLs for both the frame and the still, the dimensions, format, rotation, and a signed callback URL
+4. Crucible extracts a frame, resizes it, and uploads both the frame and the still
+5. Crucible POSTs to the callback URL; `async_variants` reconciles both placeholders and marks the record processed
+
+Video-format variants of a video (transcodes) stay on the video blob and go through `/video/variant`.
 
 ### What gets sent to Crucible
 
@@ -132,6 +136,7 @@ While the preview is processing, the original video URL is served as a fallback.
   "preview_image_variant_url": "https://s3.example.com/variant?presigned...",
   "dimensions": "640x480",
   "rotation": 0,
+  "format": "webp",
   "callback_url": "https://app.example.com/active_storage/async_variants/callbacks/signed-token"
 }
 ```
