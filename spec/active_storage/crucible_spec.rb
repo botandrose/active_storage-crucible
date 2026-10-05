@@ -171,6 +171,31 @@ RSpec.describe "ActiveStorage::Crucible" do
       expect(record.image.blob.byte_size).to eq(0)
     end
 
+    it "writes a re-dispatched variant into the output blob its record already has, purging nothing" do
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
+      clear_enqueued_jobs
+
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
+
+      expect(@presigned_put_blobs.size).to eq(2)
+      expect(@presigned_put_blobs.uniq.size).to eq(1)
+      record = @user.avatar.blob.variant_records.sole
+      expect(record.image.blob).to eq(@presigned_put_blobs.first)
+      expect(ActiveStorage::PurgeJob).not_to have_been_enqueued
+    end
+
+    it "attaches a fresh output blob when the output format changed" do
+      @user.video.attach(io: File.open("spec/support/fixtures/image.png"), filename: "clip.mp4", content_type: "video/mp4", identify: false)
+      @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "mp4"))
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
+      @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "webm"))
+
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
+
+      expect(@presigned_put_blobs.map(&:content_type)).to eq(%w[video/mp4 video/webm])
+      expect(@user.video.blob.variant_records.sole.image.blob).to eq(@presigned_put_blobs.last)
+    end
+
     it "sets variant to processing state" do
       ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
 

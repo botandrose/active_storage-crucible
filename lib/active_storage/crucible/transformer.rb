@@ -43,7 +43,7 @@ module ActiveStorage
       # reconciles both (byte_size/checksum for the variant, preview_image_* for
       # the frame).
       def initiate_video_preview(video, frame_blob, variant_record, options, callback_url)
-        output_blob = create_output_blob(video, variant_record, options)
+        output_blob = output_blob_for(video, variant_record, options)
 
         # Pass the requested variant format so Crucible writes the right file
         # extension via vips and PUTs with a Content-Type that matches what we
@@ -63,7 +63,7 @@ module ActiveStorage
 
       def initiate_video_variant(blob, variant_record, options, callback_url)
         format = blob.metadata["video_format"] || options[:format].to_s
-        output_blob = create_output_blob(blob, variant_record, options.merge(format: format))
+        output_blob = output_blob_for(blob, variant_record, options.merge(format: format))
 
         # Only pass `format` -- Crucible derives Content-Type from it via the same
         # canonical mapping output_content_type uses on this side, so the PUT
@@ -79,7 +79,7 @@ module ActiveStorage
       end
 
       def initiate_image_variant(blob, variant_record, options, callback_url)
-        output_blob = create_output_blob(blob, variant_record, options)
+        output_blob = output_blob_for(blob, variant_record, options)
 
         Client.new.post("#{endpoint}/image/variant", {
           blob_url: PresignedUrl.for(blob, method: :get),
@@ -89,6 +89,13 @@ module ActiveStorage
           format: options[:format]&.to_s,
           callback_url: callback_url,
         })
+      end
+
+      # A fresh blob would purge this one before an in-flight run writes to it, orphaning the file.
+      def output_blob_for(blob, variant_record, options)
+        existing = variant_record.image.blob
+        return existing if existing&.content_type == output_content_type(options)
+        create_output_blob(blob, variant_record, options)
       end
 
       def create_output_blob(blob, variant_record, options)
