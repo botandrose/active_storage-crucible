@@ -184,6 +184,38 @@ RSpec.describe "ActiveStorage::Crucible" do
       expect(ActiveStorage::PurgeJob).not_to have_been_enqueued
     end
 
+    it "writes into the output blob a concurrent run attached after this run loaded its record" do
+      racer_blob = nil
+      allow(ActiveStorage::VariantRecord).to receive(:find).and_wrap_original do |find, *args|
+        find.call(*args).tap do |record|
+          record.image.blob
+          racer_blob = ActiveStorage::Blob.create_before_direct_upload!(filename: "photo.jpg", content_type: "image/jpeg", byte_size: 0, checksum: "0")
+          ActiveStorage::VariantRecord.find_by(id: record.id).image.attach(racer_blob)
+        end
+      end
+
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
+
+      record = @user.avatar.blob.variant_records.sole
+      expect(ActiveStorage::Attachment.where(record: record, name: "image").pluck(:blob_id)).to eq([racer_blob.id])
+      expect(@presigned_put_blobs).to eq([racer_blob])
+    end
+
+    it "attaches nothing to a variant record purged after this run loaded it" do
+      purged_id = nil
+      allow(ActiveStorage::VariantRecord).to receive(:find).and_wrap_original do |find, *args|
+        find.call(*args).tap do |record|
+          purged_id = record.id
+          ActiveStorage::VariantRecord.where(id: record.id).delete_all
+        end
+      end
+
+      ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
+
+      expect(ActiveStorage::Attachment.where(record_type: "ActiveStorage::VariantRecord", record_id: purged_id)).to be_empty
+      expect(@crucible_calls).to be_empty
+    end
+
     it "attaches a fresh output blob when the output format changed" do
       @user.video.attach(io: File.open("spec/support/fixtures/image.png"), filename: "clip.mp4", content_type: "video/mp4", identify: false)
       @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "mp4"))

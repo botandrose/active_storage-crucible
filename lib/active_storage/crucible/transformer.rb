@@ -92,10 +92,13 @@ module ActiveStorage
       end
 
       # A fresh blob would purge this one before an in-flight run writes to it, orphaning the file.
+      # The row lock makes a racing run reuse that blob too, and a purged record raise instead of gaining an orphan.
       def output_blob_for(blob, variant_record, options)
-        existing = variant_record.image.blob
-        return existing if existing&.content_type == output_content_type(options)
-        create_output_blob(blob, variant_record, options)
+        variant_record.with_lock do
+          existing = variant_record.image.blob
+          next existing if existing&.content_type == output_content_type(options)
+          create_output_blob(blob, variant_record, options)
+        end
       end
 
       def create_output_blob(blob, variant_record, options)
