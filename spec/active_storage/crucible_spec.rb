@@ -153,6 +153,11 @@ RSpec.describe "ActiveStorage::Crucible" do
   end
 
   describe "transformer details" do
+    # async_variants skips a record whose run is still heartbeating, so a re-dispatch follows a stalled run.
+    def stall_runs
+      ActiveStorage::VariantRecord.update_all(last_heartbeat_at: 1.hour.ago)
+    end
+
     it "reads rotation from blob metadata" do
       @user.avatar.blob.update!(metadata: @user.avatar.blob.metadata.merge("rotation" => 90))
       ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
@@ -174,6 +179,7 @@ RSpec.describe "ActiveStorage::Crucible" do
     it "writes a re-dispatched variant into the output blob its record already has, purging nothing" do
       ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
       clear_enqueued_jobs
+      stall_runs
 
       ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :avatar, :thumb)
 
@@ -221,6 +227,7 @@ RSpec.describe "ActiveStorage::Crucible" do
       @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "mp4"))
       ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
       @user.video.blob.update!(metadata: @user.video.blob.metadata.merge("video_format" => "webm"))
+      stall_runs
 
       ActiveStorage::AsyncVariants::ProcessJob.perform_now(@user, :video, :transcoded)
 
